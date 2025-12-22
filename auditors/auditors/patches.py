@@ -6,8 +6,6 @@ def disable_employee_checkin_client_script():
 
     This prevents UI Client Scripts from overriding the app-provided script.
     """
-    frappe.reload_doc('frappe', 'doctype', 'client_script', force=True)
-
     # Try common field names for Client Script reference across Frappe versions
     filters = [
         ['Client Script', 'dt', '=', 'Employee Checkin'],

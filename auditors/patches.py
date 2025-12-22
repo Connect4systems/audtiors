@@ -13,9 +13,7 @@ def disable_employee_checkin_client_script():
         from auditors.auditors.patches import disable_employee_checkin_client_script as _impl
         return _impl()
     except Exception:
-        # fallback local implementation
-        frappe.reload_doc('frappe', 'doctype', 'client_script', force=True)
-
+        # fallback local implementation without reload_doc to avoid module path errors
         filters = [
             ['Client Script', 'dt', '=', 'Employee Checkin'],
             ['Client Script', 'ref_doctype', '=', 'Employee Checkin'],
