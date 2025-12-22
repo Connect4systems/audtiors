@@ -4,4 +4,4 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
-auditors.patches.disable_employee_checkin_client_script
+auditors.auditors.patches.disable_employee_checkin_client_script
