@@ -29,6 +29,11 @@ app_license = "mit"
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+doctrine_js = None
+# Client script for Employee Checkin: auto update `log_type` and show delay alert
+doctype_js = {
+	"Employee Checkin": "public/js/employee_checkin.js"
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
