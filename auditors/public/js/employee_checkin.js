@@ -107,8 +107,10 @@ function proceed_validation(frm) {
     const validate_with_shift = function(shiftObjOrStart, maybeEnd) {
         // Normalize to a shift-like object: { start: ..., end: ..., ... }
         let shiftObj = {};
-        if (typeof shiftObjOrStart === 'object') {
+        if (typeof shiftObjOrStart === 'object' && shiftObjOrStart !== null) {
             shiftObj = shiftObjOrStart;
+            shiftObj.start = shiftObj.start_time || shiftObj.start;
+            shiftObj.end = shiftObj.end_time || shiftObj.end;
         } else {
             shiftObj.start = shiftObjOrStart;
             shiftObj.end = maybeEnd;
@@ -235,7 +237,7 @@ function proceed_validation(frm) {
     } else if (frm.doc.shift) {
         frappe.db.get_doc('Shift Type', frm.doc.shift).then(shift => {
             if (shift) {
-                validate_with_shift(shift.start_time || shift.start, shift.end_time || shift.end);
+                validate_with_shift(shift);
             } else {
                 frappe.msgprint(__('No shift period found. Check-in / Check-out not allowed.'));
             }
@@ -252,18 +254,22 @@ function proceed_validation(frm) {
                     if (shift_field) {
                         frappe.db.get_doc('Shift Type', shift_field).then(shift => {
                             if (shift) {
-                                validate_with_shift(shift.start_time || shift.start, shift.end_time || shift.end);
+                                validate_with_shift(shift);
                             } else {
                                 frappe.msgprint(__('No shift period found on default shift type.'));
                             }
-                        }).catch(() => frappe.msgprint(__('Unable to fetch Shift Type from employee default')));
+                        }).catch((err) => {
+                            console.error('Error fetching Shift Type:', err);
+                            frappe.msgprint(__('Unable to fetch Shift Type from employee default: {0}', [shift_field]));
+                        });
                     } else {
                         frappe.msgprint(__('No shift assigned to employee. Cannot create check-in/check-out.'));
                     }
                 } else {
                     frappe.msgprint(__('Employee record not found.'));
                 }
-            }).catch(() => {
+            }).catch((err) => {
+                console.error('Error fetching Employee:', err);
                 frappe.msgprint(__('Unable to fetch employee details.'));
             });
         } else {
