@@ -96,14 +96,9 @@ function proceed_validation(frm) {
         const enable_late_marking = shiftObj.enable_late_entry_marking || 0;
         const enable_early_marking = shiftObj.enable_early_exit_marking || 0;
 
-        const enable_late_marking = shiftObj.enable_late_entry_marking || 0;
-        const enable_early_marking = shiftObj.enable_early_exit_marking || 0;
-
         // decide IN or OUT by nearest boundary
         const diffToStart = Math.abs(checkMoment.diff(sStart, 'minutes'));
         const diffToEnd = Math.abs(checkMoment.diff(sEnd, 'minutes'));
-        const mode = diffToStart <= diffToEnd ? 'IN' : 'OUT';
-
         const mode = diffToStart <= diffToEnd ? 'IN' : 'OUT';
 
         const proceed_after_location_check = function() {
