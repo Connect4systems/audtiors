@@ -128,114 +128,122 @@ function proceed_validation(frm) {
         sEnd.year(checkMoment.year()); sEnd.month(checkMoment.month()); sEnd.date(checkMoment.date());
         if (sEnd.isBefore(sStart)) sEnd.add(1, 'day');
 
-        // fetch grace periods from server
-        frappe.call({
-            method: 'auditors.auditors.api.get_attendance_grace',
-            callback: function(r) {
-                const data = (r && r.message) || { late_entry: 60, early_exit: 5, after_end_allow: 60 };
+        // Use grace periods from Shift Type settings (not HR Settings)
+        const pre_start_window = Number(shiftObj.begin_check_in_before_shift_start_time || 60);
+        const late_allowed = Number(shiftObj.late_entry_grace_period || 60);
+        const early_allowed = Number(shiftObj.early_exit_grace_period || 30);
+        const after_end_allow = Number(shiftObj.allow_check_out_after_shift_end_time || 300);
+        const enable_late_marking = shiftObj.enable_late_entry_marking || 0;
+        const enable_early_marking = shiftObj.enable_early_exit_marking || 0;
 
-                const pre_start_window = 60; // minutes before shift start allowed to check-in
-                const late_allowed = Number(data.late_entry || 60);
-                const early_allowed = Number(data.early_exit || 5);
-                const after_end_allow = Number(data.after_end_allow || 60);
+        const enable_late_marking = shiftObj.enable_late_entry_marking || 0;
+        const enable_early_marking = shiftObj.enable_early_exit_marking || 0;
 
-                // decide IN or OUT by nearest boundary
-                const diffToStart = Math.abs(checkMoment.diff(sStart, 'minutes'));
-                const diffToEnd = Math.abs(checkMoment.diff(sEnd, 'minutes'));
-                const mode = diffToStart <= diffToEnd ? 'IN' : 'OUT';
+        // decide IN or OUT by nearest boundary
+        const diffToStart = Math.abs(checkMoment.diff(sStart, 'minutes'));
+        const diffToEnd = Math.abs(checkMoment.diff(sEnd, 'minutes'));
+        const mode = diffToStart <= diffToEnd ? 'IN' : 'OUT';
 
-                const proceed_after_location_check = function() {
-                    if (mode === 'IN') {
-                        const windowStart = sStart.clone().subtract(pre_start_window, 'minutes');
-                        const windowEnd = sStart.clone().add(late_allowed, 'minutes');
-                        if (checkMoment.isBefore(windowStart) || checkMoment.isAfter(windowEnd)) {
-                            frappe.msgprint(__('Check-in not allowed. Allowed window: {0} to {1}', [windowStart.format('HH:mm'), windowEnd.format('HH:mm')]));
-                            return;
-                        }
-                        // Check if late and show alert
-                        if (checkMoment.isAfter(sStart)) {
-                            const late_by = checkMoment.diff(sStart, 'minutes');
-                            frappe.msgprint({
-                                title: __('Late Check-in'),
-                                message: __('You are checking in {0} minutes late. Shift started at {1}.', [late_by, sStart.format('HH:mm')]),
-                                indicator: 'orange'
+        const mode = diffToStart <= diffToEnd ? 'IN' : 'OUT';
+
+        const proceed_after_location_check = function() {
+            if (mode === 'IN') {
+                const windowStart = sStart.clone().subtract(pre_start_window, 'minutes');
+                const windowEnd = sStart.clone().add(late_allowed, 'minutes');
+                if (checkMoment.isBefore(windowStart) || checkMoment.isAfter(windowEnd)) {
+                    frappe.msgprint(__('Check-in not allowed. Allowed window: {0} to {1}', [windowStart.format('HH:mm'), windowEnd.format('HH:mm')]));
+                    return;
+                }
+                // Check if late and show alert (only if late marking is enabled)
+                if (enable_late_marking && checkMoment.isAfter(sStart)) {
+                    const late_by = checkMoment.diff(sStart, 'minutes');
+                    frappe.msgprint({
+                        title: __('Late Check-in'),
+                        message: __('You are checking in {0} minutes late. Shift started at {1}.', [late_by, sStart.format('HH:mm')]),
+                        indicator: 'orange'
+                    });
+                }
+                // allowed
+                frm.set_value('log_type', 'IN');
+                frm.set_value('shift_actual_start', checkMoment.format('HH:mm:ss'));
+                allow_save();
+            } else {
+                // OUT
+                const windowStart = sEnd.clone().subtract(early_allowed, 'minutes');
+                const windowEnd = sEnd.clone().add(after_end_allow, 'minutes');
+                if (checkMoment.isBefore(windowStart) || checkMoment.isAfter(windowEnd)) {
+                    frappe.msgprint(__('Check-out not allowed. Allowed window: {0} to {1}', [windowStart.format('HH:mm'), windowEnd.format('HH:mm')]));
+                    return;
+                }
+                // Check if early and show alert (only if early marking is enabled)
+                if (enable_early_marking && checkMoment.isBefore(sEnd)) {
+                    const early_by = sEnd.diff(checkMoment, 'minutes');
+                    frappe.msgprint({
+                        title: __('Early Check-out'),
+                        message: __('You are checking out {0} minutes early. Shift ends at {1}.', [early_by, sEnd.format('HH:mm')]),
+                        indicator: 'orange'
+                    });
+                }
+                frm.set_value('log_type', 'OUT');
+                frm.set_value('shift_actual_end', checkMoment.format('HH:mm:ss'));
+                allow_save();
+            }
+        };
+
+        // resolve shift location (Shift Location doctype) if present on shift
+        const resolve_shift_location = function(shift) {
+            return new Promise(function(resolve) {
+                const loc_name = shift.shift_location || shift.location || shift.shift_location_name || shift.shift_location_type || shift.shift_location_id;
+                if (loc_name) {
+                    frappe.db.get_doc('Shift Location', loc_name).then(loc => {
+                        if (loc) {
+                            resolve({
+                                lat: loc.latitude || loc.lat || null,
+                                lon: loc.longitude || loc.lon || null,
+                                radius: Number(loc.checkin_radius || loc.radius || 300)
                             });
-                        }
-                        // allowed
-                        frm.set_value('log_type', 'IN');
-                        frm.set_value('shift_actual_start', checkMoment.format('HH:mm:ss'));
-                        allow_save();
-                    } else {
-                        // OUT
-                        const windowStart = sEnd.clone().subtract(early_allowed, 'minutes');
-                        const windowEnd = sEnd.clone().add(after_end_allow, 'minutes');
-                        if (checkMoment.isBefore(windowStart) || checkMoment.isAfter(windowEnd)) {
-                            frappe.msgprint(__('Check-out not allowed. Allowed window: {0} to {1}', [windowStart.format('HH:mm'), windowEnd.format('HH:mm')]));
-                            return;
-                        }
-                        frm.set_value('log_type', 'OUT');
-                        frm.set_value('shift_actual_end', checkMoment.format('HH:mm:ss'));
-                        allow_save();
-                    }
-                };
-
-                // resolve shift location (Shift Location doctype) if present on shift
-                const resolve_shift_location = function(shift) {
-                    return new Promise(function(resolve) {
-                        const loc_name = shift.shift_location || shift.location || shift.shift_location_name || shift.shift_location_type || shift.shift_location_id;
-                        if (loc_name) {
-                            frappe.db.get_doc('Shift Location', loc_name).then(loc => {
-                                if (loc) {
-                                    resolve({
-                                        lat: loc.latitude || loc.lat || null,
-                                        lon: loc.longitude || loc.lon || null,
-                                        radius: Number(loc.checkin_radius || loc.radius || 300)
-                                    });
-                                } else {
-                                    resolve(null);
-                                }
-                            }).catch(() => resolve(null));
-                        } else if (shift.latitude && shift.longitude) {
-                            resolve({ lat: shift.latitude, lon: shift.longitude, radius: Number(shift.checkin_radius || 300) });
                         } else {
                             resolve(null);
                         }
-                    });
-                };
+                    }).catch(() => resolve(null));
+                } else if (shift.latitude && shift.longitude) {
+                    resolve({ lat: shift.latitude, lon: shift.longitude, radius: Number(shift.checkin_radius || 300) });
+                } else {
+                    resolve(null);
+                }
+            });
+        };
 
-                resolve_shift_location(shiftObj).then(function(locInfo) {
-                    const latTo = locInfo ? locInfo.lat : (frm.doc.branch_latitude || null);
-                    const lonTo = locInfo ? locInfo.lon : (frm.doc.branch_longitude || null);
-                    const distance_threshold = locInfo ? (locInfo.radius || 300) : 300;
+        resolve_shift_location(shiftObj).then(function(locInfo) {
+            const latTo = locInfo ? locInfo.lat : (frm.doc.branch_latitude || null);
+            const lonTo = locInfo ? locInfo.lon : (frm.doc.branch_longitude || null);
+            const distance_threshold = locInfo ? (locInfo.radius || 300) : 300;
 
-                    // compute distance to target location and require reason if far
-                    const distMeters = compute_distance_simple(frm.doc.latitude, frm.doc.longitude, latTo, lonTo);
-                    if (distMeters != null && latTo != null && lonTo != null && distMeters > distance_threshold) {
-                        frappe.msgprint({
-                            title: __('Far from office'),
-                            message: __('You are {0} m away from your office. Please provide a reason.', [distMeters]),
-                            indicator: 'red'
-                        });
-                        // set reason required and focus
-                        try {
-                            frm.set_df_property('reason', 'reqd', 1);
-                            if (frm.fields_dict && frm.fields_dict.reason && frm.fields_dict.reason.$input) {
-                                frm.fields_dict.reason.$input.focus();
-                            }
-                        } catch (e) {}
-                        if (!frm.doc.reason) {
-                            return;
-                        }
-                    } else {
-                        // clear required flag if within radius
-                        try { frm.set_df_property('reason', 'reqd', 0); } catch (e) {}
-                    }
-
-                    // proceed with time-window validation
-                    proceed_after_location_check();
+            // compute distance to target location and require reason if far
+            const distMeters = compute_distance_simple(frm.doc.latitude, frm.doc.longitude, latTo, lonTo);
+            if (distMeters != null && latTo != null && lonTo != null && distMeters > distance_threshold) {
+                frappe.msgprint({
+                    title: __('Far from office'),
+                    message: __('You are {0} m away from your office. Please provide a reason.', [distMeters]),
+                    indicator: 'red'
                 });
+                // set reason required and focus
+                try {
+                    frm.set_df_property('reason', 'reqd', 1);
+                    if (frm.fields_dict && frm.fields_dict.reason && frm.fields_dict.reason.$input) {
+                        frm.fields_dict.reason.$input.focus();
+                    }
+                } catch (e) {}
+                if (!frm.doc.reason) {
+                    return;
+                }
+            } else {
+                // clear required flag if within radius
+                try { frm.set_df_property('reason', 'reqd', 0); } catch (e) {}
             }
-        });
+
+            // proceed with time-window validation
+            proceed_after_location_check();
     };
 
     // If shift strings present, validate immediately; else try to fetch by linked `shift` field; if none, block
