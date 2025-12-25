@@ -1,6 +1,6 @@
 frappe.ui.form.on('Employee Checkin', {
     refresh: function(frm) {
-        set_log_type_and_alert(frm);
+        // Just let the form load normally - validation happens on save
     },
     before_save: function(frm) {
         // If we have already passed custom validation, let save continue
@@ -15,48 +15,8 @@ frappe.ui.form.on('Employee Checkin', {
 
         // Ensure coordinates then validate timing windows
         ensure_coordinates_then_validate(frm);
-    },
-    // keep other handlers
-    time: function(frm) {
-        set_log_type_and_alert(frm);
-    },
-    employee: function(frm) {
-        set_log_type_and_alert(frm);
-    },
-    shift_start: function(frm) {
-        set_log_type_and_alert(frm);
-    },
-    shift_end: function(frm) {
-        set_log_type_and_alert(frm);
     }
 });
-
-function set_log_type_and_alert(frm) {
-    try {
-        // use the doc time if set, otherwise current datetime
-        let time_val = frm.doc.time || (frappe.datetime && frappe.datetime.now_datetime && frappe.datetime.now_datetime());
-        let checkMoment = time_val ? moment(time_val) : moment();
-        if (!checkMoment.isValid()) checkMoment = moment();
-
-        // Prefer shift_start/shift_end fields already present on the checkin doc
-        let shiftStartStr = frm.doc.shift_start;
-        let shiftEndStr = frm.doc.shift_end;
-
-        // If shift fields aren't present but a `shift` link exists, try to fetch shift timings
-        if ((!shiftStartStr || !shiftEndStr) && frm.doc.shift) {
-            frappe.db.get_doc('Shift Type', frm.doc.shift).then(shift => {
-                if (shift) {
-                    determine_and_apply(frm, checkMoment, shift.start_time || shift.start, shift.end_time || shift.end);
-                }
-            }).catch(() => {});
-            return;
-        }
-
-        determine_and_apply(frm, checkMoment, shiftStartStr, shiftEndStr);
-    } catch (e) {
-        console.error(e);
-    }
-}
 
 // ---------------- Validation helpers ----------------
 function ensure_coordinates_then_validate(frm) {
