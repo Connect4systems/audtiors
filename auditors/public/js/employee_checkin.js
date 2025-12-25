@@ -100,7 +100,7 @@ function proceed_validation(frm) {
         frm.save();
     };
 
-    // Need shift times
+    // Need shift times - check if present on checkin form first
     let shiftStartStr = frm.doc.shift_start;
     let shiftEndStr = frm.doc.shift_end;
 
@@ -122,8 +122,8 @@ function proceed_validation(frm) {
         }
 
         // parse and align
-        let sStart = moment(sStartStr, ['HH:mm:ss', 'HH:mm']);
-        let sEnd = moment(sEndStr, ['HH:mm:ss', 'HH:mm']);
+        let sStart = moment(shiftObj.start, ['HH:mm:ss', 'HH:mm']);
+        let sEnd = moment(shiftObj.end, ['HH:mm:ss', 'HH:mm']);
         sStart.year(checkMoment.year()); sStart.month(checkMoment.month()); sStart.date(checkMoment.date());
         sEnd.year(checkMoment.year()); sEnd.month(checkMoment.month()); sEnd.date(checkMoment.date());
         if (sEnd.isBefore(sStart)) sEnd.add(1, 'day');
@@ -138,6 +138,46 @@ function proceed_validation(frm) {
                 const late_allowed = Number(data.late_entry || 60);
                 const early_allowed = Number(data.early_exit || 5);
                 const after_end_allow = Number(data.after_end_allow || 60);
+
+                // decide IN or OUT by nearest boundary
+                const diffToStart = Math.abs(checkMoment.diff(sStart, 'minutes'));
+                const diffToEnd = Math.abs(checkMoment.diff(sEnd, 'minutes'));
+                const mode = diffToStart <= diffToEnd ? 'IN' : 'OUT';
+
+                const proceed_after_location_check = function() {
+                    if (mode === 'IN') {
+                        const windowStart = sStart.clone().subtract(pre_start_window, 'minutes');
+                        const windowEnd = sStart.clone().add(late_allowed, 'minutes');
+                        if (checkMoment.isBefore(windowStart) || checkMoment.isAfter(windowEnd)) {
+                            frappe.msgprint(__('Check-in not allowed. Allowed window: {0} to {1}', [windowStart.format('HH:mm'), windowEnd.format('HH:mm')]));
+                            return;
+                        }
+                        // Check if late and show alert
+                        if (checkMoment.isAfter(sStart)) {
+                            const late_by = checkMoment.diff(sStart, 'minutes');
+                            frappe.msgprint({
+                                title: __('Late Check-in'),
+                                message: __('You are checking in {0} minutes late. Shift started at {1}.', [late_by, sStart.format('HH:mm')]),
+                                indicator: 'orange'
+                            });
+                        }
+                        // allowed
+                        frm.set_value('log_type', 'IN');
+                        frm.set_value('shift_actual_start', checkMoment.format('HH:mm:ss'));
+                        allow_save();
+                    } else {
+                        // OUT
+                        const windowStart = sEnd.clone().subtract(early_allowed, 'minutes');
+                        const windowEnd = sEnd.clone().add(after_end_allow, 'minutes');
+                        if (checkMoment.isBefore(windowStart) || checkMoment.isAfter(windowEnd)) {
+                            frappe.msgprint(__('Check-out not allowed. Allowed window: {0} to {1}', [windowStart.format('HH:mm'), windowEnd.format('HH:mm')]));
+                            return;
+                        }
+                        frm.set_value('log_type', 'OUT');
+                        frm.set_value('shift_actual_end', checkMoment.format('HH:mm:ss'));
+                        allow_save();
+                    }
+                };
 
                 // resolve shift location (Shift Location doctype) if present on shift
                 const resolve_shift_location = function(shift) {
@@ -194,48 +234,6 @@ function proceed_validation(frm) {
                     // proceed with time-window validation
                     proceed_after_location_check();
                 });
-                // end resolve_shift_location
-                return; // location async will call proceed_after_location_check
-
-                // decide IN or OUT by nearest boundary
-                const diffToStart = Math.abs(checkMoment.diff(sStart, 'minutes'));
-                const diffToEnd = Math.abs(checkMoment.diff(sEnd, 'minutes'));
-                const mode = diffToStart <= diffToEnd ? 'IN' : 'OUT';
-
-                const proceed_after_location_check = function() {
-                    if (mode === 'IN') {
-                        const windowStart = sStart.clone().subtract(pre_start_window, 'minutes');
-                        const windowEnd = sStart.clone().add(late_allowed, 'minutes');
-                        if (checkMoment.isBefore(windowStart) || checkMoment.isAfter(windowEnd)) {
-                            frappe.msgprint(__('Check-in not allowed. Allowed window: {0} to {1}', [windowStart.format('HH:mm'), windowEnd.format('HH:mm')]));
-                            return;
-                        }
-                        // Check if late and show alert
-                        if (checkMoment.isAfter(sStart)) {
-                            const late_by = checkMoment.diff(sStart, 'minutes');
-                            frappe.msgprint({
-                                title: __('Late Check-in'),
-                                message: __('You are checking in {0} minutes late. Shift started at {1}.', [late_by, sStart.format('HH:mm')]),
-                                indicator: 'orange'
-                            });
-                        }
-                        // allowed
-                        frm.set_value('log_type', 'IN');
-                        frm.set_value('shift_actual_start', checkMoment.format('HH:mm:ss'));
-                        allow_save();
-                    } else {
-                        // OUT
-                        const windowStart = sEnd.clone().subtract(early_allowed, 'minutes');
-                        const windowEnd = sEnd.clone().add(after_end_allow, 'minutes');
-                        if (checkMoment.isBefore(windowStart) || checkMoment.isAfter(windowEnd)) {
-                            frappe.msgprint(__('Check-out not allowed. Allowed window: {0} to {1}', [windowStart.format('HH:mm'), windowEnd.format('HH:mm')]));
-                            return;
-                        }
-                        frm.set_value('log_type', 'OUT');
-                        frm.set_value('shift_actual_end', checkMoment.format('HH:mm:ss'));
-                        allow_save();
-                    }
-                };
             }
         });
     };
