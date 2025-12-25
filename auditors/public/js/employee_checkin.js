@@ -210,6 +210,15 @@ function proceed_validation(frm) {
                             frappe.msgprint(__('Check-in not allowed. Allowed window: {0} to {1}', [windowStart.format('HH:mm'), windowEnd.format('HH:mm')]));
                             return;
                         }
+                        // Check if late and show alert
+                        if (checkMoment.isAfter(sStart)) {
+                            const late_by = checkMoment.diff(sStart, 'minutes');
+                            frappe.msgprint({
+                                title: __('Late Check-in'),
+                                message: __('You are checking in {0} minutes late. Shift started at {1}.', [late_by, sStart.format('HH:mm')]),
+                                indicator: 'orange'
+                            });
+                        }
                         // allowed
                         frm.set_value('log_type', 'IN');
                         frm.set_value('shift_actual_start', checkMoment.format('HH:mm:ss'));
@@ -245,35 +254,51 @@ function proceed_validation(frm) {
             frappe.msgprint(__('Unable to fetch shift details.'));
         });
     } else {
-        // No shift set on the checkin; try to fetch employee default shift
+        // No shift set on the checkin; fetch from last active Shift Assignment
         if (frm.doc.employee) {
-            frappe.db.get_doc('Employee', frm.doc.employee).then(emp => {
-                if (emp) {
-                    // try several common field names for default shift
-                    const shift_field = emp.default_shift || emp.default_shift_type || emp.shift || emp.shift_type || emp.default_shift_type_name;
-                    if (shift_field) {
-                        frappe.db.get_doc('Shift Type', shift_field).then(shift => {
-                            if (shift) {
-                                validate_with_shift(shift);
-                            } else {
-                                frappe.msgprint(__('No shift period found on default shift type.'));
-                            }
-                        }).catch((err) => {
-                            console.error('Error fetching Shift Type:', err);
-                            frappe.msgprint(__('Unable to fetch Shift Type from employee default: {0}', [shift_field]));
-                        });
+            const today = frappe.datetime.now_date();
+            frappe.call({
+                method: 'frappe.client.get_list',
+                args: {
+                    doctype: 'Shift Assignment',
+                    filters: {
+                        employee: frm.doc.employee,
+                        status: 'Active',
+                        start_date: ['<=', today],
+                        docstatus: 1
+                    },
+                    fields: ['name', 'shift_type', 'shift_location'],
+                    order_by: 'start_date desc',
+                    limit: 1
+                },
+                callback: function(r) {
+                    if (r.message && r.message.length > 0) {
+                        const assignment = r.message[0];
+                        if (assignment.shift_type) {
+                            frappe.db.get_doc('Shift Type', assignment.shift_type).then(shift => {
+                                if (shift) {
+                                    // Attach shift_location from assignment if available
+                                    if (assignment.shift_location) {
+                                        shift.shift_location = assignment.shift_location;
+                                    }
+                                    validate_with_shift(shift);
+                                } else {
+                                    frappe.msgprint(__('Shift Type not found.'));
+                                }
+                            }).catch((err) => {
+                                console.error('Error fetching Shift Type:', err);
+                                frappe.msgprint(__('Unable to fetch Shift Type: {0}', [assignment.shift_type]));
+                            });
+                        } else {
+                            frappe.msgprint(__('No shift type in assignment.'));
+                        }
                     } else {
-                        frappe.msgprint(__('No shift assigned to employee. Cannot create check-in/check-out.'));
+                        frappe.msgprint(__('No active shift assignment found for today. Cannot create check-in/check-out.'));
                     }
-                } else {
-                    frappe.msgprint(__('Employee record not found.'));
                 }
-            }).catch((err) => {
-                console.error('Error fetching Employee:', err);
-                frappe.msgprint(__('Unable to fetch employee details.'));
             });
         } else {
-            frappe.msgprint(__('No shift assigned. Cannot create check-in/check-out.'));
+            frappe.msgprint(__('No employee selected. Cannot create check-in/check-out.'));
         }
     }
 }
