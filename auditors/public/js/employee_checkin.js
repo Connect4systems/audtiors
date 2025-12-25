@@ -1,8 +1,16 @@
+console.log('Employee Checkin client script loaded successfully');
+
 frappe.ui.form.on('Employee Checkin', {
     refresh: function(frm) {
+        console.log('Employee Checkin form refresh triggered');
         // Just let the form load normally - validation happens on save
     },
     before_save: function(frm) {
+        console.log('Employee Checkin before_save triggered', {
+            skip_validation: frm._skip_validation,
+            has_lat: !!frm.doc.latitude,
+            has_lon: !!frm.doc.longitude
+        });
         // If we have already passed custom validation, let save continue
         if (frm._skip_validation) {
             frm._skip_validation = false;
