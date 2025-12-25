@@ -199,6 +199,7 @@ function proceed_validation(frm) {
 
             // proceed with time-window validation
             proceed_after_location_check();
+        });
     };
 
     // If shift strings present, validate immediately; else try to fetch by linked `shift` field; if none, block
