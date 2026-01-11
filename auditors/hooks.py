@@ -119,7 +119,7 @@ doctype_js = {
 # Override standard doctype classes
 
 override_doctype_class = {
-	"Employee Checkin": "auditors.auditors.auditors.overrides.employee_checkin.CustomEmployeeCheckin"
+	"Employee Checkin": "auditors.auditors.overrides.employee_checkin.CustomEmployeeCheckin"
 }
 
 # Document Events
@@ -128,7 +128,7 @@ override_doctype_class = {
 
 doc_events = {
 	"Employee Checkin": {
-		"before_validate": "auditors.auditors.auditors.api.before_validate_employee_checkin"
+		"before_validate": "auditors.auditors.api.before_validate_employee_checkin"
 	}
 }
 
