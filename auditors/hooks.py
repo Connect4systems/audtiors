@@ -118,21 +118,19 @@ doctype_js = {
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-# 	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+	"Employee Checkin": "auditors.auditors.auditors.overrides.employee_checkin.CustomEmployeeCheckin"
+}
 
 # Document Events
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Employee Checkin": {
+		"before_validate": "auditors.auditors.auditors.api.before_validate_employee_checkin"
+	}
+}
 
 # Scheduled Tasks
 # ---------------
