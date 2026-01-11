@@ -566,22 +566,9 @@ function display_location_map(frm) {
         })
         .catch(error => {
             console.error('Error fetching address:', error);
-            const addressDiv = document.getElementById(addressDivId);
-            if (addressDiv) {
-                addressDiv.innerHTML = 'Unable to fetch address';
-                addressDiv.style.color = '#999';
-            }
-        });
-}
-
-function calculate_and_display_distance(frm) {
-    const lat1 = frm.doc.latitude;
-    const lon1 = frm.doc.longitude;
-    const lat2 = frm.doc.branch_latitude;
-    const lon2 = frm.doc.branch_longitude;
+            const addressDiv = document.getElementById(addressDivId
+            if (frm.fields_dict.area) frm.set_value('area', data.address?.suburb || data.address?.neighbourhood || '');
     const distanceDivId = 'distance_display_' + (frm.doc.name || 'new');
-    
-    console.log('Calculating distance:', { lat1, lon1, lat2, lon2 });
     
     if (lat1 && lon1 && lat2 && lon2) {
         const distance = compute_distance_simple(lat1, lon1, lat2, lon2);
