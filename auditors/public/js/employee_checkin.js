@@ -185,19 +185,32 @@ function proceed_validation(frm) {
             // compute distance to target location and require reason if far
             const distMeters = compute_distance_simple(frm.doc.latitude, frm.doc.longitude, latTo, lonTo);
             if (distMeters != null && latTo != null && lonTo != null && distMeters > distance_threshold) {
-                frappe.msgprint({
-                    title: __('Far from office'),
-                    message: __('You are {0} m away from your office. Please provide a reason.', [distMeters]),
-                    indicator: 'red'
-                });
+                // Set log type automatically based on shift before showing dialog
+                if (!frm.doc.log_type || frm.doc.log_type === '') {
+                    frm.set_value('log_type', mode);
+                }
+                
                 // set reason required and focus
                 try {
                     frm.set_df_property('reason', 'reqd', 1);
-                    if (frm.fields_dict && frm.fields_dict.reason && frm.fields_dict.reason.$input) {
-                        frm.fields_dict.reason.$input.focus();
-                    }
                 } catch (e) {}
-                if (!frm.doc.reason) {
+                
+                // If no reason provided yet, prompt user with dialog
+                if (!frm.doc.reason || frm.doc.reason.trim() === '') {
+                    frappe.prompt({
+                        label: __('Reason'),
+                        fieldname: 'reason',
+                        fieldtype: 'Small Text',
+                        reqd: 1,
+                        description: __('You are {0} m away from your office. Please provide a reason.', [distMeters])
+                    }, function(values) {
+                        // User provided reason, set it and proceed
+                        frm.set_value('reason', values.reason);
+                        // Wait for value to be set, then proceed
+                        setTimeout(function() {
+                            proceed_after_location_check();
+                        }, 100);
+                    }, __('Far from office'), __('Submit'));
                     return;
                 }
             } else {
