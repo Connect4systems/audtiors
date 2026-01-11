@@ -3,7 +3,27 @@ console.log('Employee Checkin client script loaded successfully');
 frappe.ui.form.on('Employee Checkin', {
     refresh: function(frm) {
         console.log('Employee Checkin form refresh triggered');
-        // Just let the form load normally - validation happens on save
+        
+        // Display map and address if coordinates are available
+        if (frm.doc.latitude && frm.doc.longitude) {
+            display_location_map(frm);
+            fetch_and_display_address(frm);
+            calculate_and_display_distance(frm);
+        }
+    },
+    latitude: function(frm) {
+        if (frm.doc.latitude && frm.doc.longitude) {
+            display_location_map(frm);
+            fetch_and_display_address(frm);
+            calculate_and_display_distance(frm);
+        }
+    },
+    longitude: function(frm) {
+        if (frm.doc.latitude && frm.doc.longitude) {
+            display_location_map(frm);
+            fetch_and_display_address(frm);
+            calculate_and_display_distance(frm);
+        }
     },
     before_save: function(frm) {
         console.log('Employee Checkin before_save triggered', {
@@ -335,5 +355,178 @@ function determine_and_apply(frm, checkMoment, shiftStartStr, shiftEndStr) {
         }
     } else {
         frm.set_value('shift_actual_end', checkMoment.format('HH:mm:ss'));
+    }
+}
+
+// ---------------- Map and Address Display Functions ----------------
+function display_location_map(frm) {
+    // Remove existing map if any
+    if (frm.fields_dict.geolocation && frm.fields_dict.geolocation.$wrapper) {
+        frm.fields_dict.geolocation.$wrapper.empty();
+        
+        const lat = frm.doc.latitude;
+        const lon = frm.doc.longitude;
+        
+        // Create map container
+        const mapHtml = `
+            <div style="margin: 10px 0;">
+                <div id="checkin_map" style="height: 300px; width: 100%; border: 1px solid #d1d8dd; border-radius: 4px;"></div>
+                <div style="margin-top: 10px; padding: 10px; background: #f5f7fa; border-radius: 4px;">
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <strong>📍 Location:</strong>
+                            <div id="address_display" style="margin-top: 5px; color: #666;">Loading address...</div>
+                        </div>
+                        <div style="min-width: 150px;">
+                            <strong>📏 Distance:</strong>
+                            <div id="distance_display" style="margin-top: 5px; color: #666; font-size: 16px; font-weight: bold;">
+                                ${frm.doc.distance_in_meters || 0} meters
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 12px; color: #888;">
+                        Coordinates: ${lat.toFixed(6)}, ${lon.toFixed(6)}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        frm.fields_dict.geolocation.$wrapper.html(mapHtml);
+        
+        // Initialize the map using Leaflet (if available) or Google Maps
+        setTimeout(() => {
+            try {
+                if (typeof L !== 'undefined') {
+                    // Use Leaflet
+                    const map = L.map('checkin_map').setView([lat, lon], 15);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap contributors'
+                    }).addTo(map);
+                    
+                    // Add marker
+                    const marker = L.marker([lat, lon]).addTo(map);
+                    marker.bindPopup(`<b>Check-in Location</b><br>${lat.toFixed(6)}, ${lon.toFixed(6)}`).openPopup();
+                    
+                    // Add office location if available
+                    if (frm.doc.branch_latitude && frm.doc.branch_longitude) {
+                        const officeMarker = L.marker([frm.doc.branch_latitude, frm.doc.branch_longitude], {
+                            icon: L.icon({
+                                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                                iconSize: [25, 41],
+                                iconAnchor: [12, 41],
+                                popupAnchor: [1, -34],
+                                shadowSize: [41, 41]
+                            })
+                        }).addTo(map);
+                        officeMarker.bindPopup('<b>Office Location</b>');
+                        
+                        // Draw line between locations
+                        L.polyline([[lat, lon], [frm.doc.branch_latitude, frm.doc.branch_longitude]], {
+                            color: 'blue',
+                            weight: 2,
+                            opacity: 0.6,
+                            dashArray: '5, 10'
+                        }).addTo(map);
+                        
+                        // Fit bounds to show both markers
+                        map.fitBounds([
+                            [lat, lon],
+                            [frm.doc.branch_latitude, frm.doc.branch_longitude]
+                        ]);
+                    }
+                } else {
+                    // Fallback to Google Maps static image
+                    const staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lon}&zoom=15&size=600x300&markers=color:blue%7C${lat},${lon}&key=YOUR_API_KEY`;
+                    document.getElementById('checkin_map').innerHTML = `
+                        <a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank">
+                            <img src="https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lon}&zoom=15&size=600x300&markers=color:blue%7C${lat},${lon}" 
+                                 style="width: 100%; height: 100%; object-fit: cover;" 
+                                 onerror="this.parentElement.innerHTML='<div style=\\'padding:20px;text-align:center;\\'><a href=\\'https://www.google.com/maps?q=${lat},${lon}\\' target=\\'_blank\\'  style=\\'color:#2490ef;\\'>View on Google Maps →</a></div>'">
+                        </a>
+                    `;
+                }
+            } catch (e) {
+                console.error('Map initialization error:', e);
+                document.getElementById('checkin_map').innerHTML = `
+                    <div style="padding: 20px; text-align: center;">
+                        <a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank" style="color: #2490ef;">
+                            📍 View Location on Google Maps →
+                        </a>
+                    </div>
+                `;
+            }
+        }, 100);
+    }
+}
+
+function fetch_and_display_address(frm) {
+    const lat = frm.doc.latitude;
+    const lon = frm.doc.longitude;
+    
+    // Use Nominatim (OpenStreetMap) for reverse geocoding
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`)
+        .then(response => response.json())
+        .then(data => {
+            let address = data.display_name || 'Address not found';
+            
+            // Try to format a shorter, more readable address
+            if (data.address) {
+                const parts = [];
+                if (data.address.road) parts.push(data.address.road);
+                if (data.address.suburb || data.address.neighbourhood) parts.push(data.address.suburb || data.address.neighbourhood);
+                if (data.address.city || data.address.town) parts.push(data.address.city || data.address.town);
+                if (data.address.state) parts.push(data.address.state);
+                if (parts.length > 0) {
+                    address = parts.join(', ');
+                }
+            }
+            
+            const addressDiv = document.getElementById('address_display');
+            if (addressDiv) {
+                addressDiv.innerHTML = address;
+                addressDiv.style.color = '#333';
+            }
+            
+            // Update form fields if they exist
+            if (frm.fields_dict.area) frm.set_value('area', data.address?.suburb || data.address?.neighbourhood || '');
+            if (frm.fields_dict.city) frm.set_value('city', data.address?.city || data.address?.town || '');
+            if (frm.fields_dict.state) frm.set_value('state', data.address?.state || '');
+        })
+        .catch(error => {
+            console.error('Error fetching address:', error);
+            const addressDiv = document.getElementById('address_display');
+            if (addressDiv) {
+                addressDiv.innerHTML = 'Unable to fetch address';
+                addressDiv.style.color = '#999';
+            }
+        });
+}
+
+function calculate_and_display_distance(frm) {
+    const lat1 = frm.doc.latitude;
+    const lon1 = frm.doc.longitude;
+    const lat2 = frm.doc.branch_latitude;
+    const lon2 = frm.doc.branch_longitude;
+    
+    if (lat1 && lon1 && lat2 && lon2) {
+        const distance = compute_distance_simple(lat1, lon1, lat2, lon2);
+        
+        if (distance !== null) {
+            frm.set_value('distance_in_meters', distance);
+            
+            const distanceDiv = document.getElementById('distance_display');
+            if (distanceDiv) {
+                const km = (distance / 1000).toFixed(2);
+                distanceDiv.innerHTML = `${distance} m (${km} km)`;
+                
+                // Color code based on distance
+                if (distance > 300) {
+                    distanceDiv.style.color = '#e74c3c';
+                } else {
+                    distanceDiv.style.color = '#27ae60';
+                }
+            }
+        }
     }
 }
